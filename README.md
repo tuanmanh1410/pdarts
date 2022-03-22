@@ -1,3 +1,7 @@
+# This is repo for Compact NAS - one version based from P-DARTS with reduce inference time as well as training time
+# Compact NAS has been implemented and tested on CIFAR-10 and 100 Dataset
+# Some commands was be edited to be suitable for Compact NAS code modification
+
 # [Progressive Differentiable Architecture Search: Bridging the Depth Gap between Search and Evaluation](https://arxiv.org/abs/1904.12760)
 by Xin Chen, [Lingxi Xie](http://lingxixie.com/), [Jun Wu](https://see.tongji.edu.cn/info/1153/6850.htm) and [Qi Tian](https://scholar.google.com/citations?user=61b6eYkAAAAJ&hl=zh-CN).
 
