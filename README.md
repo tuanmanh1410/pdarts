@@ -55,22 +55,18 @@ In the current example, using 64 instead of 96 works -- it is a bit slower but d
 *We will post more results with a smaller batch size here for your reference.*
 
 #### Run the following command to perform a search progress on CIFAR10.
+##### Due to reduce step search comparing original version, we use the changed command for search progress on CIFAR10.
 
 ```
 python train_search.py \\
        --tmp_data_dir /path/to/your/data \\
        --save log_path \\
-       --add_layers 6 \\
-       --add_layers 12 \\
-       --dropout_rate 0.1 \\
-       --dropout_rate 0.4 \\
-       --dropout_rate 0.7 \\
+       --add_layers 9 \\
+       --dropout_rate 0.2 \\
+       --dropout_rate 0.6 \\
        --note note_of_this_run
 Add --cifar100 if search on CIFAR100.
 ```
-
-It needs ~7 hours on a single P100 GPU, or 12 hours on a single 1080-Ti GPU to finish everything.
-Our test with a limitation of 12 memory on P100 GPU tooks about 9 hours to finish the search. 
 
 For the parameters, please see our paper (we would provided more explanations in this README soon).
 
@@ -87,16 +83,9 @@ python train_cifar.py \\
        --note note_of_this_run
 Add --cifar100 if evaluating on CIFAR100.
 ```
+With Compact NAS, we do not evaluate on ImageNet.
 
-###### Here is the evaluation on ImageNet (mobile setting):
-```
-python train_imagenet.py \\
-       --tmp_data_dir /path/to/your/data \\
-       --save log_path \\
-       --auxiliary \\
-       --note note_of_this_run
-```
-We also provide pre-trained models of the discovered architecture on CIFAR10 and ImageNet.
+Author of P-DART alsos provide pre-trained models of the discovered architecture on CIFAR10 and ImageNet.
 You can download them from BaiduYun: [C10](https://pan.baidu.com/s/1d9AS-GNWa7EezZD6bQLHYg)(code: vxby) and [ImageNet](https://pan.baidu.com/s/1tAEqI8MgKF1tDbAnVKcreA)(code: u65g) or Google Drive: [C10](https://drive.google.com/open?id=1XsU7Lsh8gyFvIE-mP7LATiHbBr2f_FMH) and [ImageNet](https://drive.google.com/open?id=1w8DiQInnDnUZCYgb49mo9YsLLBibY-gX).
 
 ##### Here is the usage:
