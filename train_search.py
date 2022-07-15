@@ -17,6 +17,8 @@ from model_search import Network
 from genotypes import PRIMITIVES
 from genotypes import Genotype
 
+from threading import Thread
+
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
@@ -58,8 +60,9 @@ fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
 if args.cifar100:
-    CIFAR_CLASSES = 100
-    data_folder = 'cifar-100-python'
+    CIFAR_CLASSES = 10
+    #data_folder = 'cifar-100-python'
+    data_folder = 'cifar-10-batches-py'
 else:
     CIFAR_CLASSES = 10
     data_folder = 'cifar-10-batches-py'
@@ -75,11 +78,11 @@ def main():
     logging.info("args = %s", args)
     #  prepare dataset
     if args.cifar100:
-        train_transform, valid_transform = utils._data_transforms_cifar100(args)
+        train_transform, valid_transform = utils._data_transforms_cifar10(args)
     else:
         train_transform, valid_transform = utils._data_transforms_cifar10(args)
     if args.cifar100:
-        train_data = dset.CIFAR100(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
+        train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
 
@@ -106,21 +109,21 @@ def main():
     switches_normal = copy.deepcopy(switches)
     switches_reduce = copy.deepcopy(switches)
     # To be moved to args
-    num_to_keep = [5, 3, 1]
-    num_to_drop = [3, 2, 2]
-    if len(args.add_width) == 3:
+    num_to_keep = [4, 1]
+    num_to_drop = [4, 3]
+    if len(args.add_width) == 2:
         add_width = args.add_width
     else:
-        add_width = [0, 0, 0]
-    if len(args.add_layers) == 3:
+        add_width = [0, 0]
+    if len(args.add_layers) == 2:
         add_layers = args.add_layers
     else:
-        add_layers = [0, 6, 12]
-    if len(args.dropout_rate) ==3:
+        add_layers = [0, 9]
+    if len(args.dropout_rate) ==2:
         drop_rate = args.dropout_rate
     else:
-        drop_rate = [0.0, 0.0, 0.0]
-    eps_no_archs = [10, 10, 10]
+        drop_rate = [0.0, 0.0]
+    eps_no_archs = [10, 10]
     for sp in range(len(num_to_keep)):
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
@@ -164,7 +167,7 @@ def main():
             if epochs - epoch < 5:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
-        utils.save(model, os.path.join(args.save, 'weights.pt'))
+        utils.save(model, os.path.join(args.save, 'weights1.pt'))
         print('------Dropping %d paths------' % num_to_drop[sp])
         # Save switches info for s-c refinement. 
         if sp == len(num_to_keep) - 1:
@@ -185,6 +188,7 @@ def main():
                 drop = get_min_k(normal_prob[i, :], num_to_drop[sp])
             for idx in drop:
                 switches_normal[i][idxs[idx]] = False
+                
         reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
         for i in range(14):
             idxs = []
@@ -260,6 +264,207 @@ def main():
                 logging.info('Number of skip-connect: %d', max_sk)
                 genotype = parse_network(switches_normal, switches_reduce)
                 logging.info(genotype)              
+
+# Run main2() with thread 2
+def main2():
+    if not torch.cuda.is_available():
+        logging.info('No GPU device available')
+        sys.exit(1)
+    np.random.seed(args.seed)
+    cudnn.benchmark = True
+    torch.manual_seed(args.seed)
+    cudnn.enabled=True
+    torch.cuda.manual_seed(args.seed)
+    logging.info("args = %s", args)
+    #  prepare dataset
+    if args.cifar100:
+        train_transform, valid_transform = utils._data_transforms_cifar10(args)
+    else:
+        train_transform, valid_transform = utils._data_transforms_cifar10(args)
+    if args.cifar100:
+        train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
+    else:
+        train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
+
+    num_train = len(train_data)
+    indices = list(range(num_train))
+    split = int(np.floor(args.train_portion * num_train))
+
+    train_queue = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
+        pin_memory=True, num_workers=args.workers)
+
+    valid_queue = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
+        pin_memory=True, num_workers=args.workers)
+    
+    # build Network
+    criterion = nn.CrossEntropyLoss()
+    criterion = criterion.cuda()
+    switches = []
+    for i in range(14):
+        switches.append([True for j in range(len(PRIMITIVES))])
+    switches_normal = copy.deepcopy(switches)
+    switches_reduce = copy.deepcopy(switches)
+    # To be moved to args
+    num_to_keep = [4, 1]
+    num_to_drop = [4, 3]
+
+    if len(args.add_width) == 2:
+        add_width = args.add_width
+    else:
+        add_width = [0, 0]
+    if len(args.add_layers) == 2:
+        add_layers = args.add_layers
+    else:
+        add_layers = [0, 9]
+    if len(args.dropout_rate) ==2:
+        drop_rate = args.dropout_rate
+    else:
+        drop_rate = [0.0, 0.0]
+    eps_no_archs = [10, 10]
+    for sp in range(len(num_to_keep)):
+        model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
+        model = nn.DataParallel(model)
+        model = model.cuda()
+        logging.info("T2 param size = %fMB", utils.count_parameters_in_MB(model))
+        network_params = []
+        for k, v in model.named_parameters():
+            if not (k.endswith('alphas_normal') or k.endswith('alphas_reduce')):
+                network_params.append(v)       
+        optimizer = torch.optim.SGD(
+                network_params,
+                args.learning_rate,
+                momentum=args.momentum,
+                weight_decay=args.weight_decay)
+        optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
+                    lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, float(args.epochs), eta_min=args.learning_rate_min)
+        sm_dim = -1
+        epochs = args.epochs
+        eps_no_arch = eps_no_archs[sp]
+        scale_factor = 0.2
+        for epoch in range(epochs):
+            scheduler.step()
+            lr = scheduler.get_lr()[0]
+            logging.info('T2 Epoch: %d lr: %e', epoch, lr)
+            epoch_start = time.time()
+            # training
+            if epoch < eps_no_arch:
+                model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
+                model.module.update_p()
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=False)
+            else:
+                model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
+                model.module.update_p()                
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True)
+            logging.info('T2 Train_acc %f', train_acc)
+            epoch_duration = time.time() - epoch_start
+            logging.info('T2 Epoch time: %ds', epoch_duration)
+            # validation
+            if epochs - epoch < 5:
+                valid_acc, valid_obj = infer(valid_queue, model, criterion)
+                logging.info('T2 Valid_acc %f', valid_acc)
+        utils.save(model, os.path.join(args.save, 'weights2.pt'))
+        print('T2 ------Dropping %d paths------' % num_to_drop[sp])
+        # Save switches info for s-c refinement. 
+        if sp == len(num_to_keep) - 1:
+            switches_normal_2 = copy.deepcopy(switches_normal)
+            switches_reduce_2 = copy.deepcopy(switches_reduce)
+        # drop operations with low architecture weights
+        arch_param = model.module.arch_parameters()
+        normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()        
+        for i in range(14):
+            idxs = []
+            for j in range(len(PRIMITIVES)):
+                if switches_normal[i][j]:
+                    idxs.append(j)
+            if sp == len(num_to_keep) - 1:
+                # for the last stage, drop all Zero operations
+                drop = get_min_k_no_zero(normal_prob[i, :], idxs, num_to_drop[sp])
+            else:
+                drop = get_min_k2(normal_prob[i, :], num_to_drop[sp])
+            for idx in drop:
+                switches_normal[i][idxs[idx]] = False
+        reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
+        for i in range(14):
+            idxs = []
+            for j in range(len(PRIMITIVES)):
+                if switches_reduce[i][j]:
+                    idxs.append(j)
+            if sp == len(num_to_keep) - 1:
+                drop = get_min_k_no_zero(reduce_prob[i, :], idxs, num_to_drop[sp])
+            else:
+                drop = get_min_k2(reduce_prob[i, :], num_to_drop[sp])
+            for idx in drop:
+                switches_reduce[i][idxs[idx]] = False
+        logging.info('Thread2: switches_normal = %s', switches_normal)
+        logging_switches(switches_normal)
+        logging.info('Thread2: switches_reduce = %s', switches_reduce)
+        logging_switches(switches_reduce)
+        
+        if sp == len(num_to_keep) - 1:
+            arch_param = model.module.arch_parameters()
+            normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
+            reduce_prob = F.softmax(arch_param[1], dim=sm_dim).data.cpu().numpy()
+            normal_final = [0 for idx in range(14)]
+            reduce_final = [0 for idx in range(14)]
+            # remove all Zero operations
+            for i in range(14):
+                if switches_normal_2[i][0] == True:
+                    normal_prob[i][0] = 0
+                normal_final[i] = max(normal_prob[i])
+                if switches_reduce_2[i][0] == True:
+                    reduce_prob[i][0] = 0
+                reduce_final[i] = max(reduce_prob[i])                
+            # Generate Architecture, similar to DARTS
+            keep_normal = [0, 1]
+            keep_reduce = [0, 1]
+            n = 3
+            start = 2
+            for i in range(3):
+                end = start + n
+                tbsn = normal_final[start:end]
+                tbsr = reduce_final[start:end]
+                edge_n = sorted(range(n), key=lambda x: tbsn[x])
+                keep_normal.append(edge_n[-1] + start)
+                keep_normal.append(edge_n[-2] + start)
+                edge_r = sorted(range(n), key=lambda x: tbsr[x])
+                keep_reduce.append(edge_r[-1] + start)
+                keep_reduce.append(edge_r[-2] + start)
+                start = end
+                n = n + 1
+            # set switches according the ranking of arch parameters
+            for i in range(14):
+                if not i in keep_normal:
+                    for j in range(len(PRIMITIVES)):
+                        switches_normal[i][j] = False
+                if not i in keep_reduce:
+                    for j in range(len(PRIMITIVES)):
+                        switches_reduce[i][j] = False
+            # translate switches into genotype
+            genotype = parse_network(switches_normal, switches_reduce)
+            print('Threads2')
+            logging.info(genotype)
+            ## restrict skipconnect (normal cell only)
+            logging.info('Restricting skipconnect...')
+            # generating genotypes with different numbers of skip-connect operations
+            for sks in range(0, 9):
+                max_sk = 8 - sks                
+                num_sk = check_sk_number(switches_normal)               
+                if not num_sk > max_sk:
+                    continue
+                while num_sk > max_sk:
+                    normal_prob = delete_min_sk_prob(switches_normal, switches_normal_2, normal_prob)
+                    switches_normal = keep_1_on(switches_normal_2, normal_prob)
+                    switches_normal = keep_2_branches(switches_normal, normal_prob)
+                    num_sk = check_sk_number(switches_normal)
+                logging.info('Number of skip-connect: %d', max_sk)
+                genotype = parse_network(switches_normal, switches_reduce)
+                logging.info(genotype) 
 
 def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
     objs = utils.AvgrageMeter()
@@ -369,6 +574,22 @@ def get_min_k(input_in, k):
         input[idx] = 1
     
     return index
+
+def get_min_k2(input_in, k):
+    input = copy.deepcopy(input_in)
+    index = []
+    for i in range(k):
+        if (i == k-1):
+            input[i]=1
+            idx = np.argmin(input)
+            index.append(idx)
+            input[idx] = 1
+        else:
+            idx = np.argmin(input)
+            index.append(idx)
+            input[idx] = 1
+    return index
+
 def get_min_k_no_zero(w_in, idxs, k):
     w = copy.deepcopy(w_in)
     index = []
@@ -463,6 +684,8 @@ def keep_2_branches(switches_in, probs):
 if __name__ == '__main__':
     start_time = time.time()
     main() 
+    #Thread(target = main).start()
+    #Thread(target = main2).start()
     end_time = time.time()
     duration = end_time - start_time
     logging.info('Total searching time: %ds', duration)

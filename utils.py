@@ -32,7 +32,7 @@ def accuracy(output, target, topk=(1,)):
 
   res = []
   for k in topk:
-    correct_k = correct[:k].view(-1).float().sum(0)
+    correct_k = correct[:k].reshape(-1).float().sum(0)
     res.append(correct_k.mul_(100.0/batch_size))
   return res
 
@@ -94,7 +94,7 @@ def _data_transforms_cifar100(args):
   valid_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
-    ])
+  ])
   return train_transform, valid_transform
 
 

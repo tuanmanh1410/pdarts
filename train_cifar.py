@@ -34,7 +34,7 @@ parser.add_argument('--cutout_length', type=int, default=16, help='cutout length
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
 parser.add_argument('--save', type=str, default='/tmp/checkpoints/', help='experiment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
-parser.add_argument('--arch', type=str, default='PDARTS', help='which architecture to use')
+parser.add_argument('--arch', type=str, default='OURS2', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--tmp_data_dir', type=str, default='/tmp/cache/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')
@@ -53,8 +53,9 @@ fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
 if args.cifar100:
-    CIFAR_CLASSES = 100
-    data_folder = 'cifar-100-python'
+    CIFAR_CLASSES = 10
+    #data_folder = 'cifar-100-python'
+    data_folder = 'cifar-10-batches-py'
 else:
     CIFAR_CLASSES = 10
     data_folder = 'cifar-10-batches-py'
@@ -91,12 +92,12 @@ def main():
         )
 
     if args.cifar100:
-        train_transform, valid_transform = utils._data_transforms_cifar100(args)
+        train_transform, valid_transform = utils._data_transforms_cifar10(args)
     else:
         train_transform, valid_transform = utils._data_transforms_cifar10(args)
     if args.cifar100:
-        train_data = dset.CIFAR100(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
-        valid_data = dset.CIFAR100(root=args.tmp_data_dir, train=False, download=True, transform=valid_transform)
+        train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
+        valid_data = dset.CIFAR10(root=args.tmp_data_dir, train=False, download=True, transform=valid_transform)
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
         valid_data = dset.CIFAR10(root=args.tmp_data_dir, train=False, download=True, transform=valid_transform)
